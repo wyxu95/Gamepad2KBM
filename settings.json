@@ -1,0 +1,9 @@
+{
+  "MouseDeadzone": 0.12,
+  "InitialSpeed": 100,
+  "MaximumSpeed": 1600,
+  "AccelerationDelay": 0.08,
+  "FullSpeedAfter": 0.90,
+  "LetterDeadzone": 0.45,
+  "LetterHysteresisDegrees": 2.0
+}
