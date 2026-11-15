@@ -8,6 +8,7 @@ using System.Text;
 using System.Threading;
 using System.Web.Script.Serialization;
 using System.Windows.Forms;
+using Microsoft.Win32;
 
 namespace Gamepad2KBM
 {
@@ -145,6 +146,29 @@ namespace Gamepad2KBM
         }
     }
 
+    internal static class StartupRegistration
+    {
+        private const string KeyPath = @"Software\Microsoft\Windows\CurrentVersion\Run";
+        private const string Name = "Gamepad2KBM";
+        private static string Command { get { return "\"" + Application.ExecutablePath + "\""; } }
+        public static bool IsEnabled
+        {
+            get
+            {
+                using (var key = Registry.CurrentUser.OpenSubKey(KeyPath))
+                    return key != null && String.Equals(key.GetValue(Name) as string, Command, StringComparison.OrdinalIgnoreCase);
+            }
+        }
+        public static void SetEnabled(bool enabled)
+        {
+            using (var key = Registry.CurrentUser.CreateSubKey(KeyPath))
+            {
+                if (enabled) key.SetValue(Name, Command, RegistryValueKind.String);
+                else key.DeleteValue(Name, false);
+            }
+        }
+    }
+
     internal sealed class BridgeContext : ApplicationContext
     {
         private readonly Engine engine;
@@ -170,6 +194,12 @@ namespace Gamepad2KBM
             menu.Items.Add("测试震动", null, delegate { feedback.Pulse(selectedSlot, clock.Elapsed.TotalSeconds, 0.36, 18000, 24000); });
             menu.Items.Add("打开配置（修改后重启）", null, delegate { Process.Start("notepad.exe", Path.Combine(directory, "settings.json")); });
             menu.Items.Add("打开日志", null, delegate { Process.Start("notepad.exe", logPath); });
+            var startupItem = new ToolStripMenuItem("开机自启") { Checked = StartupRegistration.IsEnabled };
+            startupItem.Click += delegate {
+                StartupRegistration.SetEnabled(!StartupRegistration.IsEnabled);
+                startupItem.Checked = StartupRegistration.IsEnabled;
+            };
+            menu.Items.Add(startupItem);
             menu.Items.Add(new ToolStripSeparator());
             menu.Items.Add("退出 Gamepad2KBM", null, delegate { ExitThread(); });
             tray = new NotifyIcon { Icon = SystemIcons.Application, Text = "Gamepad2KBM · 待机", ContextMenuStrip = menu, Visible = true };
@@ -296,6 +326,11 @@ namespace Gamepad2KBM
             Native.SetProcessDPIAware();
             try { Native.SetThreadDpiAwarenessContext(new IntPtr(-4)); } catch (EntryPointNotFoundException) { }
             Application.EnableVisualStyles(); Application.SetCompatibleTextRenderingDefault(false);
+            if (args.Length > 0 && (args[0] == "--enable-startup" || args[0] == "--disable-startup"))
+            {
+                StartupRegistration.SetEnabled(args[0] == "--enable-startup");
+                return 0;
+            }
             if (args.Length > 0 && args[0] == "--probe")
             {
                 var slots = new List<object>();
