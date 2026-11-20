@@ -280,6 +280,41 @@ namespace Gamepad2KBM
             Check(!e.LeftNumeric && !e.RightSymbols && !e.RightWheel.Literal && e.RightWheel.Letters == Qwerty.RightLetters, "Stopping resets both layers");
         }
 
+        private static void CursorRecovery()
+        {
+            foreach (string operation in new[] { "GetCursorPos", "SetCursorPos" })
+            {
+                var engine = MouseMode();
+                engine.Step(new Pad { Buttons = Buttons.A }, 0.7);
+                var commands = engine.Step(new Pad { LX = 1 }, 0.8);
+                Check(commands.Count >= 2 && commands[0].Kind == CommandKind.Move && Has(commands, CommandKind.MouseUp, 0),
+                    "Moving while releasing a drag produces movement and mouse-up");
+                var sent = new List<Command>();
+                int failures = 0;
+                BridgeContext.Execute(commands, delegate(Command command) {
+                    if (command.Kind == CommandKind.Move) throw new CursorMoveException(operation, 5);
+                    sent.Add(command);
+                }, delegate(CursorMoveException ex) {
+                    failures++;
+                    Check(ex.NativeErrorCode == 5 && ex.Message.Contains(operation), "Cursor failure identifies API and Windows error");
+                });
+                Check(failures == 1 && engine.Mode == Mode.Mouse, "Cursor failure preserves mouse mode");
+                Check(Has(sent, CommandKind.MouseUp, 0), "Cursor failure still releases a held mouse button");
+                BridgeContext.Execute(engine.Step(new Pad { LX = 1 }, 0.81), sent.Add,
+                    delegate(CursorMoveException ex) { throw new Exception("Unexpected cursor failure"); });
+                Check(sent.Exists(delegate(Command c) { return c.Kind == CommandKind.Move; }), "Next tick resumes pointer movement");
+            }
+            bool propagated = false;
+            try
+            {
+                BridgeContext.Execute(new List<Command> { Command.Key('A') },
+                    delegate(Command command) { throw new System.ComponentModel.Win32Exception(5); },
+                    delegate(CursorMoveException ex) { throw new Exception("Unexpected cursor failure"); });
+            }
+            catch (System.ComponentModel.Win32Exception) { propagated = true; }
+            Check(propagated, "Other input failures retain the stop-and-release path");
+        }
+
         private sealed class KeyRecorder : TextBox
         {
             public int Escapes, Enters;
@@ -409,7 +444,7 @@ namespace Gamepad2KBM
                     }
                     return 0;
                 }
-                Acceleration(); Modes(); Wheels(); Layers(); Rumble();
+                Acceleration(); Modes(); Wheels(); Layers(); Rumble(); CursorRecovery();
                 bool coreOnly = args.Length > 0 && args[0] == "--core-only";
                 if (!coreOnly) DesktopSmoke();
                 Console.WriteLine("PASS: " + checks + (coreOnly ? " core checks." : " checks, including real Windows input/focus smoke tests."));

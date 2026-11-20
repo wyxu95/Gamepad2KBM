@@ -181,7 +181,7 @@ namespace Gamepad2KBM
         private bool leftTrigger, rightTrigger, f8Down, stopping;
         private int selectedSlot = -1;
         private int shownTapCount;
-        private double nextDiscovery, nextPaint;
+        private double nextDiscovery, nextPaint, nextCursorWarning;
         private Mode shownMode = Mode.Standby;
 
         public BridgeContext(Settings settings, string directory)
@@ -285,8 +285,29 @@ namespace Gamepad2KBM
             }
         }
 
-        private static void Execute(List<Command> commands)
-        { foreach (Command command in commands) Native.Execute(command); }
+        private void Execute(List<Command> commands)
+        {
+            Execute(commands, Native.Execute, delegate(CursorMoveException ex) {
+                double now = clock.Elapsed.TotalSeconds;
+                if (now < nextCursorWarning) return;
+                Log("Cursor movement unavailable; keeping current mode and retrying on next movement: " + ex.Message);
+                nextCursorWarning = now + 5;
+            });
+        }
+
+        internal static void Execute(List<Command> commands, Action<Command> execute, Action<CursorMoveException> cursorFailed)
+        {
+            foreach (Command command in commands)
+            {
+                try { execute(command); }
+                catch (CursorMoveException ex)
+                {
+                    if (command.Kind != CommandKind.Move) throw;
+                    // A transient cursor API failure must not discard later button releases.
+                    cursorFailed(ex);
+                }
+            }
+        }
 
         private void SendRumble(int slot, ushort left, ushort right)
         {

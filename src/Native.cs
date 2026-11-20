@@ -30,11 +30,17 @@ namespace Gamepad2KBM
     [StructLayout(LayoutKind.Sequential)]
     public struct XVibration { public ushort LeftMotor, RightMotor; }
 
+    internal sealed class CursorMoveException : Win32Exception
+    {
+        public CursorMoveException(string operation, int error)
+            : base(error, operation + " failed (Win32 error " + error + ")") { }
+    }
+
     public static class Native
     {
         [DllImport("xinput1_4.dll")] public static extern uint XInputGetState(uint index, out XState state);
         [DllImport("xinput1_4.dll")] public static extern uint XInputSetState(uint index, ref XVibration vibration);
-        [DllImport("user32.dll")] public static extern bool GetCursorPos(out Point point);
+        [DllImport("user32.dll", SetLastError = true)] public static extern bool GetCursorPos(out Point point);
         [DllImport("user32.dll", SetLastError = true)] public static extern bool SetCursorPos(int x, int y);
         [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
         [DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern int GetWindowText(IntPtr window, StringBuilder text, int length);
@@ -73,8 +79,10 @@ namespace Gamepad2KBM
             if (command.Kind == CommandKind.Move)
             {
                 Point point;
-                if (!GetCursorPos(out point) || !SetCursorPos(point.X + command.X, point.Y + command.Y))
-                    throw new Win32Exception(Marshal.GetLastWin32Error(), "Cursor movement failed");
+                if (!GetCursorPos(out point))
+                    throw new CursorMoveException("GetCursorPos", Marshal.GetLastWin32Error());
+                if (!SetCursorPos(point.X + command.X, point.Y + command.Y))
+                    throw new CursorMoveException("SetCursorPos", Marshal.GetLastWin32Error());
                 return;
             }
             if (command.Kind == CommandKind.Key) { Tap(command.Code); return; }

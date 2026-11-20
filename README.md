@@ -111,6 +111,8 @@ After 0.08 seconds, speed follows a Smoothstep ramp until 0.9 seconds. The resul
 
 Edit the configuration through the tray and restart to apply it. Disconnecting returns to standby and releases held mouse buttons; use the activation gesture after reconnecting.
 
+If Windows temporarily rejects a cursor read or movement, the program keeps the current mode, continues processing button releases, and retries with the next movement. The log identifies the failed cursor API and Windows error code, with repeated warnings limited to once every five seconds.
+
 ## Build and validation
 
 Exit the application from the tray before rebuilding. In Windows PowerShell:
